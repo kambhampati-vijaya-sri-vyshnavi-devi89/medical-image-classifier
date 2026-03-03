@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>ThoraxNet — Medical Image Classification</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Syne+Mono&family=Outfit:wght@300;400;500&display=swap"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #070a10;
+  --surface: #0d1117;
+  --surface2: #131820;
+  --surface3: #1a2230;
+  --border: rgba(100,160,255,0.08);
+  --border2: rgba(100,160,255,0.16);
+  --text: #d8e4f0;
+  --muted: #5a7090;
+  --accent: #00c8ff;
+  --accent2: #0090cc;
+  --green: #00e5a0;
+  --red: #ff4d6a;
+  --yellow: #ffd166;
+  --vgg: #818cf8;
+  --res: #38bdf8;
+  --eff: #34d399;
+  --glow: rgba(0,200,255,0.12);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Outfit',sans-serif;
+  font-weight:300;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* scanline overlay */
+body::before{
+  content:'';position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,200,255,0.012) 2px,rgba(0,200,255,0.012) 4px);
+  pointer-events:none;z-index:0;
+}
+
+/* ── HEADER ── */
+header{
+  position:sticky;top:0;z-index:100;
+  background:rgba(7,10,16,0.92);
+  backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border2);
+  padding:0 2.5rem;
+  display:flex;align-items:center;gap:2rem;
+  height:56px;
+}
+.logo{
+  font-family:'Syne',sans-serif;
+  font-size:1.2rem;font-weight:800;
+  letter-spacing:0.08em;color:#fff;
+  text-transform:uppercase;
+}
+.logo span{color:var(--accent);}
+.header-tag{
+  font-family:'Syne Mono',monospace;
+  font-size:0.62rem;color:var(--muted);
+  letter-spacing:0.12em;text-transform:uppercase;
+  border:1px solid var(--border2);
+  padding:0.2rem 0.7rem;border-radius:2px;
+}
+.header-right{margin-left:auto;display:flex;gap:1rem;align-items:center;}
+.model-select-header{
+  display:flex;gap:0;border:1px solid var(--border2);border-radius:3px;overflow:hidden;
+}
+.msh-btn{
+  background:transparent;border:none;
+  padding:0.3rem 1rem;
+  font-family:'Syne Mono',monospace;font-size:0.68rem;
+  letter-spacing:0.06em;color:var(--muted);cursor:pointer;
+  border-right:1px solid var(--border2);transition:all 0.15s;
+}
+.msh-btn:last-child{border-right:none;}
+.msh-btn:hover{background:var(--surface3);color:var(--text);}
+.msh-btn.active-vgg{background:var(--vgg);color:#fff;border-color:var(--vgg);}
+.msh-btn.active-res{background:var(--res);color:#000;border-color:var(--res);}
+.msh-btn.active-eff{background:var(--eff);color:#000;border-color:var(--eff);}
+.status-dot{
+  width:7px;height:7px;border-radius:50%;
+  background:var(--green);
+  box-shadow:0 0 8px var(--green);
+  animation:blink 2s infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* ── LAYOUT ── */
+.app{
+  position:relative;z-index:1;
+  display:grid;grid-template-columns:380px 1fr;
+  min-height:calc(100vh - 56px);
+}
+.left-panel{
+  border-right:1px solid var(--border2);
+  background:var(--surface);
+  display:flex;flex-direction:column;
+}
+.right-panel{padding:1.8rem 2rem;overflow-y:auto;}
+
+/* ── LEFT PANEL ── */
+.panel-section{
+  padding:1.2rem 1.4rem;
+  border-bottom:1px solid var(--border);
+}
+.panel-label{
+  font-family:'Syne Mono',monospace;
+  font-size:0.62rem;color:var(--muted);
+  letter-spacing:0.12em;text-transform:uppercase;
+  margin-bottom:0.8rem;
+  display:flex;justify-content:space-between;align-items:center;
+}
+
+/* Demo selector */
+.demo-grid{
+  display:grid;grid-template-columns:repeat(5,1fr);gap:0.4rem;
+}
+.demo-btn{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:3px;padding:0.5rem 0.3rem;
+  cursor:pointer;text-align:center;transition:all 0.15s;
+  font-family:'Syne Mono',monospace;font-size:0.58rem;
+  color:var(--muted);letter-spacing:0.04em;
+}
+.demo-btn:hover{border-color:var(--accent);color:var(--accent);}
+.demo-btn.active{background:var(--glow);border-color:var(--accent);color:var(--accent);}
+.demo-btn .demo-icon{font-size:1.2rem;display:block;margin-bottom:0.25rem;}
+
+/* Upload area */
+.upload-zone{
+  border:1.5px dashed var(--border2);
+  border-radius:4px;padding:1.2rem;
+  text-align:center;cursor:pointer;
+  transition:all 0.2s;background:var(--surface2);
+  position:relative;
+}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:var(--glow);}
+.upload-icon{font-size:1.8rem;margin-bottom:0.4rem;opacity:0.5;}
+.upload-text{font-size:0.78rem;color:var(--muted);}
+.upload-text strong{color:var(--accent);display:block;margin-top:0.2rem;font-size:0.72rem;font-family:'Syne Mono',monospace;}
+#fileInput{position:absolute;inset:0;opacity:0;cursor:pointer;}
+
+/* X-ray viewer */
+.xray-viewer{
+  background:#000;
+  border-radius:4px;overflow:hidden;
+  position:relative;aspect-ratio:1/1;
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--border2);
+}
+.xray-viewer img{width:100%;height:100%;object-fit:contain;display:block;}
+.xray-placeholder{
+  display:flex;flex-direction:column;align-items:center;gap:0.6rem;
+  color:var(--muted);font-family:'Syne Mono',monospace;font-size:0.72rem;
+}
+.xray-placeholder .ph-icon{font-size:2.5rem;opacity:0.2;}
+.viewer-badge{
+  position:absolute;top:8px;right:8px;
+  background:rgba(0,0,0,0.7);border:1px solid var(--border2);
+  padding:0.2rem 0.6rem;border-radius:2px;
+  font-family:'Syne Mono',monospace;font-size:0.6rem;color:var(--muted);
+}
+
+/* Analyze button */
+.analyze-btn{
+  width:100%;padding:0.9rem;
+  background:var(--accent2);color:#fff;border:none;
+  font-family:'Syne',sans-serif;font-size:0.82rem;
+  font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+  border-radius:3px;cursor:pointer;
+  transition:all 0.2s;position:relative;overflow:hidden;
+}
+.analyze-btn::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent);
+  transform:translateX(-100%);transition:transform 0.5s;
+}
+.analyze-btn:hover::before{transform:translateX(100%);}
+.analyze-btn:hover{background:var(--accent);box-shadow:0 4px 20px rgba(0,200,255,0.35);}
+.analyze-btn:disabled{opacity:0.4;cursor:not-allowed;}
+.analyze-btn:disabled::before{display:none;}
+
+/* ── RIGHT PANEL ── */
+.right-top{
+  display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;
+  margin-bottom:1.5rem;
+}
+
+/* Result card */
+.result-card{
+  background:var(--surface);border:1px solid var(--border2);
+  border-radius:4px;padding:1.4rem;
+  display:none;animation:slideUp 0.4s ease;
+}
+.result-card.show{display:block;}
+@keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+.result-verdict{
+  font-family:'Syne',sans-serif;
+  font-size:1.5rem;font-weight:800;
+  letter-spacing:-0.01em;margin-bottom:0.3rem;
+}
+.result-verdict.correct{color:var(--green);}
+.result-verdict.wrong{color:var(--red);}
+.result-conf{
+  font-family:'Syne Mono',monospace;
+  font-size:0.78rem;color:var(--muted);
+  margin-bottom:1rem;
+}
+.conf-bar-wrap{margin-bottom:1rem;}
+.conf-bar-label{
+  display:flex;justify-content:space-between;
+  font-family:'Syne Mono',monospace;font-size:0.65rem;
+  color:var(--muted);margin-bottom:0.4rem;
+}
+.conf-bar{height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;}
+.conf-fill{height:100%;border-radius:3px;transition:width 1s cubic-bezier(.4,0,.2,1);}
+.regions-list{margin-top:0.8rem;}
+.region-tag{
+  display:inline-block;margin:0.2rem 0.2rem 0.2rem 0;
+  padding:0.2rem 0.6rem;border-radius:2px;
+  font-family:'Syne Mono',monospace;font-size:0.62rem;
+  background:rgba(0,200,255,0.08);
+  border:1px solid rgba(0,200,255,0.2);
+  color:var(--accent);
+}
+
+/* Grad-CAM card */
+.gradcam-card{
+  background:var(--surface);border:1px solid var(--border2);
+  border-radius:4px;overflow:hidden;display:none;
+}
+.gradcam-card.show{display:block;animation:slideUp 0.4s 0.1s ease both;}
+.gradcam-header{
+  padding:0.7rem 1.1rem;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.gradcam-title{
+  font-family:'Syne Mono',monospace;
+  font-size:0.65rem;letter-spacing:0.1em;
+  text-transform:uppercase;color:var(--muted);
+}
+.gradcam-img{width:100%;display:block;}
+.gradcam-legend{
+  padding:0.7rem 1.1rem;
+  display:flex;gap:0.8rem;align-items:center;
+  flex-wrap:wrap;
+}
+.legend-item{
+  display:flex;align-items:center;gap:0.35rem;
+  font-family:'Syne Mono',monospace;font-size:0.6rem;color:var(--muted);
+}
+.legend-dot{width:10px;height:10px;border-radius:2px;}
+
+/* Top-5 bar chart */
+.prob-section{
+  background:var(--surface);border:1px solid var(--border2);
+  border-radius:4px;padding:1.2rem;
+  margin-bottom:1.5rem;display:none;
+}
+.prob-section.show{display:block;animation:slideUp 0.4s 0.15s ease both;}
+.section-title{
+  font-family:'Syne Mono',monospace;
+  font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:1rem;
+}
+.prob-row{
+  display:flex;align-items:center;gap:0.8rem;
+  margin-bottom:0.6rem;
+}
+.prob-cls{
+  font-family:'Syne Mono',monospace;
+  font-size:0.72rem;width:150px;flex-shrink:0;color:var(--text);
+}
+.prob-bar-wrap{flex:1;}
+.prob-bar{height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;}
+.prob-bar-fill{height:100%;border-radius:3px;transition:width 1s ease;}
+.prob-val{
+  font-family:'Syne Mono',monospace;
+  font-size:0.7rem;width:48px;text-align:right;color:var(--muted);
+}
+
+/* Model comparison */
+.compare-section{
+  background:var(--surface);border:1px solid var(--border2);
+  border-radius:4px;padding:1.2rem;
+  margin-bottom:1.5rem;display:none;
+}
+.compare-section.show{display:block;animation:slideUp 0.4s 0.2s ease both;}
+.compare-row{
+  display:flex;align-items:center;gap:1rem;
+  padding:0.7rem 1rem;
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:3px;margin-bottom:0.5rem;
+}
+.cm-name{
+  font-family:'Syne Mono',monospace;font-size:0.7rem;
+  width:110px;flex-shrink:0;
+}
+.cm-pred{font-size:0.78rem;flex:1;}
+.cm-conf{
+  font-family:'Syne Mono',monospace;font-size:0.68rem;
+  width:50px;text-align:right;
+}
+.cm-tick{font-size:1rem;width:20px;}
+
+/* Activation regions */
+.regions-section{
+  background:var(--surface);border:1px solid var(--border2);
+  border-radius:4px;padding:1.2rem;
+  margin-bottom:1.5rem;display:none;
+}
+.regions-section.show{display:block;animation:slideUp 0.4s 0.25s ease both;}
+
+/* Metrics section */
+.metrics-section{
+  background:var(--surface);border:1px solid var(--border2);
+  border-radius:4px;overflow:hidden;
+}
+.metrics-header{
+  padding:1rem 1.4rem;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.metrics-header h2{
+  font-family:'Syne',sans-serif;font-size:1rem;
+  font-weight:700;letter-spacing:0.04em;
+}
+.metrics-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);
+  gap:1px;background:var(--border);
+}
+.metric-col{background:var(--surface);padding:1.4rem;}
+.mc-name{
+  font-family:'Syne Mono',monospace;font-size:0.65rem;
+  letter-spacing:0.08em;text-transform:uppercase;margin-bottom:0.8rem;
+}
+.mc-accuracy{
+  font-family:'Syne',sans-serif;font-size:2.4rem;
+  font-weight:800;line-height:1;letter-spacing:-0.02em;margin-bottom:0.2rem;
+}
+.mc-sub{font-family:'Syne Mono',monospace;font-size:0.62rem;color:var(--muted);margin-bottom:1rem;}
+.mc-bars .bar-r{
+  display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;
+}
+.mc-bars .bar-label{
+  font-family:'Syne Mono',monospace;font-size:0.6rem;
+  color:var(--muted);width:50px;flex-shrink:0;
+}
+.mc-bars .bar{flex:1;height:3px;background:var(--surface3);border-radius:2px;overflow:hidden;}
+.mc-bars .bar-fill{height:100%;border-radius:2px;transition:width 1.5s ease;}
+.mc-bars .bar-v{
+  font-family:'Syne Mono',monospace;font-size:0.6rem;
+  color:var(--text);width:36px;text-align:right;
+}
+
+/* AUC chart section */
+.auc-section{
+  padding:1.4rem;border-top:1px solid var(--border);
+}
+.auc-chart-wrap{height:260px;margin-top:0.8rem;}
+
+/* Loading */
+.loading-wrap{
+  display:none;padding:2rem;
+  justify-content:center;align-items:center;gap:0.8rem;
+  font-family:'Syne Mono',monospace;font-size:0.72rem;color:var(--muted);
+}
+.loading-wrap.show{display:flex;}
+.spinner{
+  width:18px;height:18px;border:2px solid var(--border2);
+  border-top-color:var(--accent);border-radius:50%;
+  animation:spin 0.7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Error */
+.error-box{
+  display:none;margin:0.5rem 1.4rem;
+  padding:0.7rem 1rem;
+  background:rgba(255,77,106,0.08);
+  border:1px solid rgba(255,77,106,0.25);
+  border-radius:3px;
+  font-family:'Syne Mono',monospace;font-size:0.72rem;color:var(--red);
+}
+.error-box.show{display:block;}
+
+/* EMPTY STATE */
+.empty-state{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:400px;color:var(--muted);text-align:center;gap:1rem;
+}
+.empty-icon{font-size:3rem;opacity:0.15;}
+.empty-text{font-family:'Syne Mono',monospace;font-size:0.78rem;letter-spacing:0.06em;}
+.empty-sub{font-size:0.8rem;max-width:300px;line-height:1.6;opacity:0.6;}
+
+@media(max-width:900px){
+  .app{grid-template-columns:1fr;}
+  .left-panel{border-right:none;border-bottom:1px solid var(--border2);}
+  .right-top{grid-template-columns:1fr;}
+  .metrics-grid{grid-template-columns:1fr;}
+  header{padding:0 1rem;}
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">Thorax<span>Net</span></div>
+  <div class="header-tag">Transfer Learning · Chest X-Ray · Grad-CAM</div>
+  <div class="header-right">
+    <div class="model-select-header">
+      <button class="msh-btn" data-m="vgg16">VGG16</button>
+      <button class="msh-btn active-res" data-m="resnet50">ResNet-50</button>
+      <button class="msh-btn" data-m="efficientnet">EfficientNet</button>
+    </div>
+    <div class="status-dot" title="Model ready"></div>
+  </div>
+</header>
+
+<div class="app">
+
+  <!-- LEFT PANEL -->
+  <div class="left-panel">
+
+    <!-- Demo selector -->
+    <div class="panel-section">
+      <div class="panel-label">
+        <span>Demo Cases</span>
+        <span style="color:var(--accent);font-size:0.6rem">NIH ChestX-ray14</span>
+      </div>
+      <div class="demo-grid">
+        <button class="demo-btn active" data-demo="normal"><span class="demo-icon">✓</span>Normal</button>
+        <button class="demo-btn" data-demo="pneumonia"><span class="demo-icon">🫁</span>Pneumon.</button>
+        <button class="demo-btn" data-demo="covid"><span class="demo-icon">⚠</span>COVID-19</button>
+        <button class="demo-btn" data-demo="effusion"><span class="demo-icon">💧</span>Effusion</button>
+        <button class="demo-btn" data-demo="cardiomegaly"><span class="demo-icon">❤</span>Cardio.</button>
+      </div>
+    </div>
+
+    <!-- Upload -->
+    <div class="panel-section">
+      <div class="panel-label">Upload X-Ray</div>
+      <div class="upload-zone" id="uploadZone">
+        <div class="upload-icon">⬆</div>
+        <div class="upload-text">
+          Drag & drop chest X-ray
+          <strong>PNG / JPG · Max 10MB</strong>
+        </div>
+        <input type="file" id="fileInput" accept=".png,.jpg,.jpeg"/>
+      </div>
+    </div>
+
+    <!-- X-ray viewer -->
+    <div class="panel-section" style="flex:1">
+      <div class="panel-label">
+        <span>Image Viewer</span>
+        <span id="imageBadge" style="font-size:0.6rem;color:var(--accent)">Demo · Normal</span>
+      </div>
+      <div class="xray-viewer">
+        <img id="xrayImg" src="" alt="X-ray" style="display:none"/>
+        <div class="xray-placeholder" id="xrayPlaceholder">
+          <span class="ph-icon">🫁</span>
+          <span>No image loaded</span>
+        </div>
+        <div class="viewer-badge">PA VIEW</div>
+      </div>
+    </div>
+
+    <!-- Analyze -->
+    <div class="panel-section">
+      <div class="error-box" id="errorBox"></div>
+      <div class="loading-wrap" id="loadingWrap">
+        <div class="spinner"></div><span>Running inference...</span>
+      </div>
+      <button class="analyze-btn" id="analyzeBtn">▶ Classify Image</button>
+    </div>
+
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+
+    <!-- Empty state -->
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">🔬</div>
+      <div class="empty-text">Select a demo case or upload an X-ray</div>
+      <div class="empty-sub">Choose a model from the header and click Classify Image to run inference with Grad-CAM explainability.</div>
+    </div>
+
+    <!-- Results area -->
+    <div id="resultsArea" style="display:none">
+
+      <div class="right-top">
+        <!-- Prediction result -->
+        <div class="result-card" id="resultCard">
+          <div class="panel-label" style="margin-bottom:0.6rem">Prediction</div>
+          <div class="result-verdict" id="resultVerdict"></div>
+          <div class="result-conf" id="resultConf"></div>
+          <div class="conf-bar-wrap">
+            <div class="conf-bar-label">
+              <span>Confidence</span><span id="confPct"></span>
+            </div>
+            <div class="conf-bar"><div class="conf-fill" id="confFill"></div></div>
+          </div>
+          <div class="panel-label" style="margin-bottom:0.5rem">Radiological Features</div>
+          <div class="regions-list" id="regionsList"></div>
+          <div style="margin-top:0.8rem;font-family:'Syne Mono',monospace;font-size:0.62rem;color:var(--muted)">
+            Inference: <span id="inferTime"></span>ms · Params: <span id="modelParams"></span>
+          </div>
+        </div>
+
+        <!-- Grad-CAM -->
+        <div class="gradcam-card" id="gradcamCard">
+          <div class="gradcam-header">
+            <span class="gradcam-title">Grad-CAM Activation Map</span>
+            <span style="font-family:'Syne Mono',monospace;font-size:0.6rem;color:var(--accent)">Explainability</span>
+          </div>
+          <img class="gradcam-img" id="gradcamImg" src="" alt="Grad-CAM"/>
+          <div class="gradcam-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#0000ff"></div>Low</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#00ff00"></div>Medium</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#ffff00"></div>High</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#ff0000"></div>Peak</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top-5 probabilities -->
+      <div class="prob-section" id="probSection">
+        <div class="section-title">Class Probability Distribution (Top-5)</div>
+        <div id="probBars"></div>
+      </div>
+
+      <!-- Model comparison -->
+      <div class="compare-section" id="compareSection">
+        <div class="section-title">All-Model Comparison</div>
+        <div id="compareRows"></div>
+      </div>
+
+    </div>
+
+    <!-- Benchmark Metrics -->
+    <div class="metrics-section" id="metricsSection">
+      <div class="metrics-header">
+        <h2>Transfer Learning Benchmark</h2>
+        <span style="font-family:'Syne Mono',monospace;font-size:0.65rem;color:var(--muted)">NIH ChestX-ray14 · 112,120 images</span>
+      </div>
+      <div class="metrics-grid" id="metricsGrid">
+        <div style="grid-column:1/-1;padding:1.5rem;text-align:center;font-family:'Syne Mono',monospace;font-size:0.72rem;color:var(--muted)">
+          <span class="spinner" style="display:inline-block;margin-right:0.5rem"></span>Loading metrics...
+        </div>
+      </div>
+      <div class="auc-section">
+        <div class="section-title">Per-Class AUC-ROC Comparison</div>
+        <div class="auc-chart-wrap"><canvas id="aucChart"></canvas></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── STATE ──
+let selectedModel = 'resnet50';
+let selectedDemo  = 'normal';
+let isUpload = false;
+let uploadedFile = null;
+let metricsLoaded = false;
+
+const MODEL_COLORS = { vgg16: '#818cf8', resnet50: '#38bdf8', efficientnet: '#34d399' };
+
+// ── MODEL SELECTOR ──
+document.querySelectorAll('.msh-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.msh-btn').forEach(b => b.className = 'msh-btn');
+    const m = btn.dataset.m;
+    selectedModel = m;
+    if (m === 'vgg16') btn.classList.add('active-vgg');
+    else if (m === 'resnet50') btn.classList.add('active-res');
+    else btn.classList.add('active-eff');
+  });
+});
+
+// ── DEMO BUTTONS ──
+document.querySelectorAll('.demo-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    document.querySelectorAll('.demo-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedDemo = btn.dataset.demo;
+    isUpload = false;
+    uploadedFile = null;
+    document.getElementById('imageBadge').textContent = 'Demo · ' + btn.textContent.trim().replace(/[^\w\s]/g,'').trim();
+    await loadDemoImage(selectedDemo);
+  });
+});
+
+async function loadDemoImage(demo) {
+  try {
+    const res = await fetch('/api/demo_image/' + demo);
+    const d = await res.json();
+    showImage(d.image);
+  } catch(e) {}
+}
+
+// ── FILE UPLOAD ──
+const fileInput = document.getElementById('fileInput');
+const uploadZone = document.getElementById('uploadZone');
+
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+});
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('drag');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+function handleFile(file) {
+  const allowed = ['image/png','image/jpeg'];
+  if (!allowed.includes(file.type)) { showError('Invalid file type. Use PNG or JPG.'); return; }
+  uploadedFile = file;
+  isUpload = true;
+  document.querySelectorAll('.demo-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('imageBadge').textContent = 'Upload · ' + file.name.substring(0,20);
+  const reader = new FileReader();
+  reader.onload = e => showImage(e.target.result);
+  reader.readAsDataURL(file);
+}
+
+function showImage(src) {
+  const img = document.getElementById('xrayImg');
+  const ph = document.getElementById('xrayPlaceholder');
+  img.src = src; img.style.display = 'block'; ph.style.display = 'none';
+}
+
+// ── ANALYZE ──
+document.getElementById('analyzeBtn').addEventListener('click', analyze);
+
+async function analyze() {
+  clearError();
+  const btn = document.getElementById('analyzeBtn');
+  const loading = document.getElementById('loadingWrap');
+  btn.disabled = true; loading.classList.add('show');
+
+  try {
+    const formData = new FormData();
+    formData.append('model', selectedModel);
+    if (isUpload && uploadedFile) {
+      formData.append('file', uploadedFile);
+    } else {
+      formData.append('demo', selectedDemo);
+    }
+    const res = await fetch('/api/classify', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok) { showError(data.error || 'Classification failed.'); return; }
+    renderResults(data);
+  } catch(e) {
+    showError('Server connection failed. Make sure Flask is running.');
+  } finally {
+    btn.disabled = false; loading.classList.remove('show');
+  }
+}
+
+function renderResults(d) {
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('resultsArea').style.display = 'block';
+
+  const correct = d.correct;
+  const color = MODEL_COLORS[d.model] || '#38bdf8';
+
+  // Result card
+  const vc = document.getElementById('resultVerdict');
+  vc.textContent = d.predicted_class;
+  vc.className = 'result-verdict ' + (correct ? 'correct' : 'wrong');
+  document.getElementById('resultConf').textContent = `${d.confidence}% confidence · Model: ${d.model.toUpperCase()} · GT: ${d.ground_truth}`;
+  document.getElementById('confPct').textContent = d.confidence + '%';
+  const fill = document.getElementById('confFill');
+  fill.style.background = correct ? 'var(--green)' : 'var(--red)';
+  setTimeout(() => fill.style.width = d.confidence + '%', 60);
+
+  document.getElementById('regionsList').innerHTML = (d.activation_regions || []).map(r =>
+    `<span class="region-tag">${r}</span>`
+  ).join('');
+  document.getElementById('inferTime').textContent = d.inference_time_ms;
+  document.getElementById('modelParams').textContent = d.model_params;
+
+  document.getElementById('resultCard').classList.add('show');
+
+  // Grad-CAM
+  if (d.gradcam) {
+    document.getElementById('gradcamImg').src = d.gradcam;
+    document.getElementById('gradcamCard').classList.add('show');
+  }
+
+  // Top-5 probabilities
+  const probBars = document.getElementById('probBars');
+  probBars.innerHTML = (d.top5 || []).map((item, i) => {
+    const isTop = i === 0;
+    return `<div class="prob-row">
+      <div class="prob-cls" style="${isTop ? 'color:' + color + ';font-weight:500' : ''}">${item.class}</div>
+      <div class="prob-bar-wrap">
+        <div class="prob-bar">
+          <div class="prob-bar-fill" style="background:${isTop ? color : 'rgba(100,160,255,0.25)'};width:0%" data-w="${item.prob}"></div>
+        </div>
+      </div>
+      <div class="prob-val">${item.prob}%</div>
+    </div>`;
+  }).join('');
+  setTimeout(() => document.querySelectorAll('.prob-bar-fill').forEach(el => el.style.width = el.dataset.w + '%'), 80);
+  document.getElementById('probSection').classList.add('show');
+
+  // Model comparison
+  const modelNames = { vgg16: 'VGG-16', resnet50: 'ResNet-50', efficientnet: 'EfficientNet-B3' };
+  document.getElementById('compareRows').innerHTML = Object.entries(d.model_comparison).map(([m, info]) => {
+    const mc = MODEL_COLORS[m];
+    return `<div class="compare-row">
+      <div class="cm-name" style="color:${mc}">${modelNames[m] || m}</div>
+      <div class="cm-pred">${info.predicted}</div>
+      <div class="cm-conf" style="color:${mc}">${info.confidence}%</div>
+      <div class="cm-tick">${info.correct ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--red)">✗</span>'}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('compareSection').classList.add('show');
+}
+
+// ── METRICS ──
+async function loadMetrics() {
+  try {
+    const res = await fetch('/api/metrics');
+    const data = await res.json();
+
+    // Model metric cards
+    const grid = document.getElementById('metricsGrid');
+    const colors = ['var(--vgg)', 'var(--res)', 'var(--eff)'];
+    grid.innerHTML = data.models.map((m, i) => `
+      <div class="metric-col">
+        <div class="mc-name" style="color:${colors[i]}">${m.name}</div>
+        <div class="mc-accuracy" style="color:${colors[i]}">${m.accuracy}<span style="font-size:1rem;color:var(--muted)">%</span></div>
+        <div class="mc-sub">Accuracy · AUC ${m.macro_auc} · ${m.params} params</div>
+        <div class="mc-bars">
+          ${[['F1', m.macro_f1], ['Precision', m.precision], ['Recall', m.recall]].map(([n,v]) =>
+            `<div class="bar-r">
+              <span class="bar-label">${n}</span>
+              <div class="bar"><div class="bar-fill" style="background:${colors[i]};width:0%" data-w="${v}"></div></div>
+              <span class="bar-v">${v}%</span>
+            </div>`
+          ).join('')}
+        </div>
+        <div style="margin-top:0.8rem;font-family:'Syne Mono',monospace;font-size:0.6rem;color:var(--muted)">
+          Inference: ${m.inference_ms}ms avg
+        </div>
+      </div>
+    `).join('');
+    setTimeout(() => document.querySelectorAll('.bar-fill').forEach(el => el.style.width = el.dataset.w + '%'), 200);
+
+    // AUC chart
+    const classes = Object.keys(data.per_class_auc);
+    const datasets = [
+      { label: 'VGG16', data: classes.map(c => data.per_class_auc[c].vgg16), borderColor: '#818cf8', backgroundColor: 'rgba(129,140,248,0.1)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#818cf8', tension: 0.3 },
+      { label: 'ResNet-50', data: classes.map(c => data.per_class_auc[c].resnet50), borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.1)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#38bdf8', tension: 0.3 },
+      { label: 'EfficientNet', data: classes.map(c => data.per_class_auc[c].efficientnet), borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.1)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#34d399', tension: 0.3 },
+    ];
+    new Chart(document.getElementById('aucChart').getContext('2d'), {
+      type: 'line',
+      data: { labels: classes, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { font: { family: 'Syne Mono', size: 10 }, color: '#5a7090', boxWidth: 12 } }
+        },
+        scales: {
+          x: { ticks: { font: { family: 'Syne Mono', size: 9 }, color: '#5a7090', maxRotation: 30 }, grid: { color: 'rgba(100,160,255,0.06)' } },
+          y: { min: 0.6, max: 1.0, ticks: { font: { family: 'Syne Mono', size: 9 }, color: '#5a7090' }, grid: { color: 'rgba(100,160,255,0.06)' } }
+        }
+      }
+    });
+  } catch(e) { console.error(e); }
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorBox');
+  el.textContent = '⚠ ' + msg; el.classList.add('show');
+}
+function clearError() {
+  document.getElementById('errorBox').classList.remove('show');
+}
+
+// ── INIT ──
+loadDemoImage('normal');
+loadMetrics();
+</script>
+</body>
+</html>
